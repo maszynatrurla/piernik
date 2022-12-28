@@ -24,6 +24,9 @@ add_executable(piernik
 	src/httpserver.c
 	src/lights.c
 	src/effects.c
+	src/templater.c
+	src/template_harmonogram.c
+	src/settings.c
 )
 
 target_compile_options(piernik

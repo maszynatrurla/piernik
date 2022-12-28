@@ -9,8 +9,10 @@
 #include "lights.h"
 #include "hardware/gpio.h"
 #include "hardware/pwm.h"
+#include "hardware/rtc.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "settings.h"
 
 #include "pytka.h"
 
@@ -96,6 +98,7 @@ static struct {
 static struct {
     ELightsState state;
     ELedState ledState[ELedCount];
+    int h_state;
 } s_state = {.state = ELightsIdle};
 
 static const unsigned LED_PINS [ELedCount] =
@@ -149,11 +152,45 @@ void lights_init(void)
 
     s_state.state = ELightsIdle;
     s_request.valid = 0;
+    s_state.h_state = 0;
+}
+
+int lights_in_range(const datetime_t * now, const ootime_t * start,
+        const ootime_t * end)
+{
+    return ((now->hour > start->h) || ((now->hour == start->h) && (now->min >= start->m)))
+            &&
+            ((now->hour < end->h) || ((now->hour == end->h) && (now->min < end->m)));
 }
 
 void lights_cycle(void)
 {
+    const PiernikSettings_t * cfg = getSettings();
+    datetime_t tera;
+    bool success = rtc_get_datetime(&tera);
 
+    if (success && cfg->time_valid)
+    {
+        if ((0 == s_state.h_state) && lights_in_range(&tera, &cfg->enable_lights_start, &cfg->enable_lights_end))
+        {
+            lights_onoff(ELedMain, 1);
+            if (cfg->wc_too)
+            {
+                lights_onoff(ELedWc, 1);
+            }
+            s_state.h_state = 1;
+        }
+
+        else if ((1 == s_state.h_state) && !lights_in_range(&tera, &cfg->enable_lights_start, &cfg->enable_lights_end))
+        {
+            lights_onoff(ELedMain, 0);
+            if (cfg->wc_too)
+            {
+                lights_onoff(ELedWc, 0);
+            }
+            s_state.h_state = 0;
+        }
+    }
 }
 
 void lights_off(void)

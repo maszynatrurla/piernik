@@ -7,10 +7,12 @@
 #include "effects.h"
 #include "lights.h"
 #include "plaja.h"
+#include "pytka.h"
 
 #include <stdio.h>
 
 #include "hardware/timer.h"
+#include "hardware/gpio.h"
 
 /* Pause time between effect phases [ms].
  * In general equal to the time length sound effect. */
@@ -23,6 +25,9 @@
 #define DISCO_TLEN      60000   /**< How long disco effect is taking place. */
 
 #define ALARM_TLEN      15000   /**< How long alarm effect is taking place. */
+
+
+#define PIN_BUTTON PIN_WAKEUP_GP_I_BUTTON
 
 /**
  * Substates of go-to-WC effect.
@@ -77,6 +82,9 @@ static struct
     int request_wc;
     int request_disco;
     int request_alarm;
+
+    int request_button;
+    unsigned button_c;
 } s_effect;
 
 static uint32_t time_now_ms(void)
@@ -401,16 +409,74 @@ static void do_alarm(void)
     }
 }
 
+static void do_button(void)
+{
+    if (s_effect.request_alarm || s_effect.request_disco || s_effect.request_wc)
+    {
+        effects_deinit();
+        stop_disco_lights();
+        plaja_action(PLAJA_CMD_STOP, 0);
+        plaja_action(PLAJA_CMD_VOL_SET, 30);
+    }
+    else
+    {
+        ++s_effect.button_c;
+
+        switch(s_effect.button_c & 3)
+        {
+        case 0:
+            lights_onoff(ELedMain, 0);
+            lights_onoff(ELedWc, 0);
+            break;
+        case 1:
+            lights_onoff(ELedMain, 1);
+            lights_onoff(ELedWc, 0);
+            break;
+        case 2:
+            lights_onoff(ELedMain, 1);
+            lights_onoff(ELedWc, 1);
+            break;
+        case 3:
+            lights_onoff(ELedMain, 0);
+            lights_onoff(ELedWc, 1);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+static void button_callback(uint gpio, uint32_t events)
+{
+    if (gpio == PIN_BUTTON)
+    {
+        s_effect.request_button = 1;
+    }
+}
+
 void effects_init(void)
 {
     s_effect.wc.state = ESWcIdle;
     s_effect.disco.state = ESDiscoIdle;
     s_effect.request_disco = 0;
     s_effect.request_wc = 0;
+    s_effect.request_alarm = 0;
+
+    s_effect.request_button = 0;
+    s_effect.button_c = 0;
+    gpio_init(PIN_BUTTON);
+    gpio_set_dir(PIN_BUTTON, GPIO_IN);
+    gpio_set_irq_enabled(PIN_BUTTON, 4, true);
+    gpio_set_irq_enabled_with_callback(PIN_BUTTON, 4, true, button_callback);
 }
 
 void effects_cycle(void)
 {
+    if (s_effect.request_button)
+    {
+        do_button();
+        s_effect.request_button = 0;
+    }
     if (s_effect.request_wc)
     {
         do_wc();

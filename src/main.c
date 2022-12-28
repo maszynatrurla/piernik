@@ -24,8 +24,9 @@
 
 #include "httpserver.h"
 
-#define WIFI_TASK_PRIORITY              ( tskIDLE_PRIORITY + 5UL )
+#define WIFI_TASK_PRIORITY              ( tskIDLE_PRIORITY + 6UL )
 #define EFFECTS_TASK_PRIORITY           ( tskIDLE_PRIORITY + 4UL )
+#define LIGHTS_TASK_PRIORITY            ( tskIDLE_PRIORITY + 5UL )
 
 void vApplicationMallocFailedHook(void)
 {
@@ -50,6 +51,17 @@ void effects_task(void *params)
     }
 }
 
+void lights_task(void *params)
+{
+    (void) params;
+
+    while (1)
+    {
+        lights_cycle();
+        vTaskDelay(1000);
+    }
+}
+
 void wifi_task(void *params)
 {
     extern struct netif * netif_default;
@@ -69,7 +81,7 @@ void wifi_task(void *params)
 
     printf("sta mode initialized\n");
 
-    for (i = 0; i < 4; ++i)
+    for (i = 0; i < 3; ++i)
     {
         if (cyw43_arch_wifi_connect_timeout_ms(
                 wifi_ssid, wifi_pass,
@@ -84,9 +96,11 @@ void wifi_task(void *params)
             break;
         }
     }
-    if (4 == i)
+    if (3 == i)
     {
-        return;
+        while (1) {
+            vTaskDelay(1000);
+        }
     }
 
     printf("tera jusz\n");
@@ -115,14 +129,19 @@ void wifi_task(void *params)
 
     http_server_netconn_deinit();
 
+    while (1) {
+        vTaskDelay(1000);
+    }
+
     cyw43_arch_deinit();
 }
 
 void vLaunch(void)
 {
-    TaskHandle_t task1, task2;
+    TaskHandle_t task1, task2, task3;
     xTaskCreate(wifi_task, "WifiThread", 4096, NULL, WIFI_TASK_PRIORITY, &task1);
     xTaskCreate(effects_task, "EffectsThread", 256, NULL, EFFECTS_TASK_PRIORITY, &task2);
+    xTaskCreate(lights_task, "LightsThread", 256, NULL, LIGHTS_TASK_PRIORITY, &task3);
 
     /* Start the tasks and timer running. */
     vTaskStartScheduler();
@@ -135,6 +154,7 @@ int main()
     lights_init();
     effects_init();
     plaja_init();
+    czasy_init();
 
     printf("Piernik!\n");
 
